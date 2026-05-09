@@ -2,66 +2,79 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Thai Digit Collector</title>
-    <style>
-        :root{
-            --bg:#0f1724; --card:#0b1220; --accent:#6ee7b7; --muted:#94a3b8; --glass:rgba(255,255,255,0.04);
-            --radius:12px; --maxw:760px;
-        }
-        html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial;}
-        body{display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#071126 0%, #08122a 100%);color:#e6eef6}
-        .wrap{width:95%;max-width:var(--maxw);background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow:0 10px 30px rgba(2,6,23,0.6);border-radius:16px;padding:22px;display:grid;grid-template-columns:1fr 360px;gap:20px}
-        header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between}
-        h1{margin:0;font-size:18px;letter-spacing:0.4px}
-        .hint{color:var(--muted);font-size:13px}
-        .canvas-card{background:var(--card);border-radius:var(--radius);padding:18px;display:flex;flex-direction:column;align-items:center}
-        canvas{background:#000;border-radius:10px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.02);cursor:crosshair}
-        .controls{display:flex;align-items:center;gap:10px;margin-top:12px}
-        .btn{background:linear-gradient(90deg,var(--accent),#34d399);border:none;color:#042022;padding:8px 14px;border-radius:10px;font-weight:600;cursor:pointer}
-        .btn.ghost{background:transparent;color:var(--accent);border:1px solid rgba(255,255,255,0.04)}
-        .labels{display:flex;flex-wrap:wrap;gap:8px}
-        .label-chip{background:var(--glass);padding:6px 10px;border-radius:999px;color:var(--muted);cursor:pointer}
-        .label-chip input{margin-right:6px}
-        .aside{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:14px;border-radius:12px}
-        #status{margin-top:12px;color:var(--accent);font-weight:600}
-        footer{grid-column:1/-1;text-align:center;color:var(--muted);font-size:12px;margin-top:6px}
-        @media(max-width:880px){.wrap{grid-template-columns:1fr;}}
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="wrap">
-        <header>
-            <div>
-                <h1>Thai Digit Collector</h1>
-                <div class="hint">Collect handwritten digits 11–15 (MNIST-style)</div>
-            </div>
-            <div class="hint">Draw with mouse or touch — press <strong>Save</strong> to store</div>
-        </header>
+<body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-4xl">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-emerald-400 mb-2">Thai Digit Collector</h1>
+            <p class="text-slate-300 text-sm">Collect handwritten digits 11–15 for MNIST-style dataset</p>
+        </div>
 
-        <section class="canvas-card">
-            <canvas id="drawCanvas" width="280" height="280"></canvas>
-            <div class="controls">
-                <button id="clearBtn" class="btn ghost">Clear</button>
-                <button id="saveBtn" class="btn">Save</button>
-                <div id="status" aria-live="polite"></div>
-            </div>
-            <div style="margin-top:8px;color:var(--muted);font-size:13px">Tip: Hold and draw smoothly for best samples</div>
-        </section>
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <!-- Canvas Section -->
+            <div class="lg:col-span-3">
+                <div class="bg-slate-800/50 border border-emerald-400/20 rounded-2xl p-6 backdrop-blur">
+                    <div class="flex flex-col items-center gap-4">
+                        <div class="bg-black rounded-xl overflow-hidden shadow-lg">
+                            <canvas id="drawCanvas" width="280" height="280" class="cursor-crosshair"></canvas>
+                        </div>
+                        
+                        <div class="flex gap-3 w-full justify-center">
+                            <button id="clearBtn" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg font-medium transition">
+                                Clear
+                            </button>
+                            <button id="saveBtn" class="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold rounded-lg transition">
+                                Save
+                            </button>
+                        </div>
 
-        <aside class="aside">
-            <div style="font-weight:700;margin-bottom:8px">Label</div>
-            <div id="label-select" class="labels">
-                <label class="label-chip"><input type="radio" name="label" value="11" checked>11</label>
-                <label class="label-chip"><input type="radio" name="label" value="12">12</label>
-                <label class="label-chip"><input type="radio" name="label" value="13">13</label>
-                <label class="label-chip"><input type="radio" name="label" value="14">14</label>
-                <label class="label-chip"><input type="radio" name="label" value="15">15</label>
+                        <div id="status" class="text-emerald-400 font-semibold text-sm min-h-6" aria-live="polite"></div>
+                        <p class="text-slate-400 text-xs text-center">Tip: Hold and draw smoothly for best samples</p>
+                    </div>
+                </div>
             </div>
-            <div style="margin-top:12px;color:var(--muted);font-size:13px">Saved files land in the <code>dataset/&lt;label&gt;/</code> folder.</div>
-        </aside>
 
-        <footer>Local only — running on the machine. Be careful if you expose via ngrok.</footer>
+            <!-- Label Selection Sidebar -->
+            <div class="lg:col-span-1">
+                <div class="bg-slate-800/50 border border-emerald-400/20 rounded-2xl p-6 backdrop-blur">
+                    <h2 class="text-emerald-400 font-bold mb-4 text-sm uppercase">Select Label</h2>
+                    
+                    <div id="label-select" class="space-y-2">
+                        <label class="flex items-center gap-3 p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg cursor-pointer transition">
+                            <input type="radio" name="label" value="11" checked class="w-4 h-4">
+                            <span class="text-slate-200 font-medium">11</span>
+                        </label>
+                        <label class="flex items-center gap-3 p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg cursor-pointer transition">
+                            <input type="radio" name="label" value="12" class="w-4 h-4">
+                            <span class="text-slate-200 font-medium">12</span>
+                        </label>
+                        <label class="flex items-center gap-3 p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg cursor-pointer transition">
+                            <input type="radio" name="label" value="13" class="w-4 h-4">
+                            <span class="text-slate-200 font-medium">13</span>
+                        </label>
+                        <label class="flex items-center gap-3 p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg cursor-pointer transition">
+                            <input type="radio" name="label" value="14" class="w-4 h-4">
+                            <span class="text-slate-200 font-medium">14</span>
+                        </label>
+                        <label class="flex items-center gap-3 p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg cursor-pointer transition">
+                            <input type="radio" name="label" value="15" class="w-4 h-4">
+                            <span class="text-slate-200 font-medium">15</span>
+                        </label>
+                    </div>
+
+                    <p class="text-slate-400 text-xs mt-4">Files saved to <code class="bg-slate-900/50 px-2 py-1 rounded text-emerald-300">dataset/&lt;label&gt;/</code></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center text-slate-400 text-xs mt-8">
+            Local only — running on the machine. Be careful if exposed via ngrok.
+        </footer>
     </div>
 
     <script>

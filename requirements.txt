@@ -2,3 +2,5 @@ flask
 flask-httpauth
 pyngrok
 werkzeug
+numpy
+pillow

@@ -39,6 +39,9 @@ pip install -r requirements.txt
 - flask-httpauth: HTTP authentication
 - pyngrok: ngrok tunneling client
 - werkzeug: WSGI utilities
+- numpy: Numerical computing
+- pillow: Image processing
+- tensorflow: Deep learning framework for model loading
 
 ### 2. Get ngrok Auth Token (Optional but Recommended)
 
