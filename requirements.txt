@@ -1,0 +1,4 @@
+flask
+flask-httpauth
+pyngrok
+werkzeug
