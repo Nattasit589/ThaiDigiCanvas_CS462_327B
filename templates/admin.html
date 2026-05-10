@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin · Thai Digit</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 min-h-screen text-slate-200 p-6">
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-lime-300 to-lime-400">Thai Digit · Model Admin</h1>
+            <p class="text-sm text-slate-400">Upload and manage Keras models (28×28 grayscale, 5 classes)</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Upload card -->
+            <section class="bg-slate-800/50 border border-lime-400/20 rounded-2xl p-6">
+                <h2 class="text-lime-300 font-semibold mb-4">Upload Model</h2>
+
+                <form id="uploadForm" enctype="multipart/form-data" class="space-y-4">
+                    <div>
+                        <input id="modelFile" name="file" type="file" accept=".h5,.keras" required
+                            class="block w-full text-sm text-slate-200 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-lime-50 file:text-lime-700 hover:file:bg-lime-100" />
+                        <p class="text-xs text-slate-400 mt-2">Supported: .h5, .keras · model should accept 28×28 grayscale input.</p>
+                    </div>
+
+                    <div id="fileInfo" class="hidden bg-slate-700/40 p-3 rounded-md text-sm">
+                        <div>Selected: <span id="fileName" class="font-medium text-lime-300"></span></div>
+                        <div class="text-xs text-slate-400 mt-1">Size: <span id="fileSize"></span></div>
+                    </div>
+
+                    <button id="uploadBtn" class="w-full bg-lime-400 text-slate-900 font-bold py-2 rounded-full">Upload & Activate</button>
+
+                    <div id="uploadStatus" class="hidden mt-3 text-sm"></div>
+                </form>
+
+                <div class="mt-6 text-xs text-slate-400">
+                    Note: Uploaded models are saved to <span class="font-mono text-xs">models/</span> with timestamps. Use the list to switch between models without restarting.
+                </div>
+            </section>
+
+            <!-- Models list -->
+            <aside class="bg-slate-800/50 border border-lime-400/20 rounded-2xl p-6">
+                <h2 class="text-lime-300 font-semibold mb-4">Available Models</h2>
+                <div id="modelsContainer" class="space-y-3 text-sm text-slate-300">
+                    <div class="text-center py-8 text-slate-500">
+                        <svg class="animate-spin h-6 w-6 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        Loading models...
+                    </div>
+                </div>
+
+                <div id="switchMessage" class="hidden mt-4 p-3 rounded-md bg-lime-50 text-slate-900 text-sm"></div>
+            </aside>
+        </div>
+
+        <footer class="mt-8 text-xs text-slate-500 border-t border-slate-700 pt-4"> 
+            <div class="flex gap-4 justify-center">
+                <a href="/" class="text-lime-400">← Data Collection</a>
+                <span class="text-slate-600">|</span>
+                <a href="/predict-page" class="text-lime-400">Prediction →</a>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('modelFile');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const uploadStatus = document.getElementById('uploadStatus');
+        const modelsContainer = document.getElementById('modelsContainer');
+        const switchMessage = document.getElementById('switchMessage');
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                const f = e.target.files[0];
+                fileName.textContent = f.name;
+                fileSize.textContent = (f.size / (1024*1024)).toFixed(2) + ' MB';
+                fileInfo.classList.remove('hidden');
+                uploadStatus.classList.add('hidden');
+            } else {
+                fileInfo.classList.add('hidden');
+            }
+        });
+
+        async function loadModels(){
+            try{
+                const res = await fetch('/admin/models');
+                const data = await res.json();
+                if(data.status === 'success'){
+                    renderModels(data.models, data.active_model);
+                } else {
+                    modelsContainer.innerHTML = '<div class="text-center text-red-400">Failed to fetch models</div>';
+                }
+            }catch(err){
+                modelsContainer.innerHTML = `<div class="text-center text-red-400">${err.message}</div>`;
+            }
+        }
+
+        function renderModels(models, active){
+            if(models.length === 0){
+                modelsContainer.innerHTML = '<div class="text-center text-slate-400">No models found. Upload one to get started.</div>';
+                return;
+            }
+            modelsContainer.innerHTML = models.map(m => {
+                const activeClass = (m.path === active) ? 'bg-lime-900/30 border-lime-400/30' : 'bg-slate-700/40 border-slate-700';
+                const button = (m.path === active) ? '<span class="px-2 py-1 bg-lime-200 text-lime-900 text-xs rounded-full">✓ Active</span>' : `<button onclick="switchModel('${m.path.replace(/\\/g,'\\\\')}')" class="px-2 py-1 bg-lime-400 text-slate-900 text-xs rounded-full">Switch</button>`;
+                return `
+                    <div class="p-3 rounded-md border ${activeClass} flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="font-semibold text-sm text-slate-100">${m.name}</div>
+                            <div class="text-xs text-slate-400 mt-1">${m.size_mb} MB • ${m.source}</div>
+                            <div class="text-xs text-slate-500 mt-1">${m.location}</div>
+                        </div>
+                        <div class="ml-4">${button}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function switchModel(path){
+            try{
+                const res = await fetch('/admin/switch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({model_path: path})});
+                const data = await res.json();
+                if(res.ok){
+                    switchMessage.textContent = data.message || 'Switched model';
+                    switchMessage.classList.remove('hidden');
+                    setTimeout(()=> switchMessage.classList.add('hidden'), 3000);
+                    loadModels();
+                } else {
+                    switchMessage.textContent = data.error || 'Switch failed';
+                    switchMessage.classList.remove('hidden');
+                }
+            }catch(err){
+                switchMessage.textContent = err.message; switchMessage.classList.remove('hidden');
+            }
+        }
+
+        form.addEventListener('submit', async (e)=>{
+            e.preventDefault();
+            if(!fileInput.files.length) return;
+            uploadBtn.disabled = true; uploadBtn.textContent = 'Uploading...';
+            const fd = new FormData(); fd.append('file', fileInput.files[0]);
+            try{
+                const res = await fetch('/admin/upload', {method:'POST', body: fd});
+                const data = await res.json();
+                if(res.ok){
+                    uploadStatus.classList.remove('hidden'); uploadStatus.textContent = data.message || 'Uploaded';
+                    fileInput.value = ''; fileInfo.classList.add('hidden');
+                    loadModels();
+                } else {
+                    uploadStatus.classList.remove('hidden'); uploadStatus.textContent = data.error || 'Upload failed';
+                }
+            }catch(err){
+                uploadStatus.classList.remove('hidden'); uploadStatus.textContent = err.message;
+            } finally { uploadBtn.disabled = false; uploadBtn.textContent = 'Upload & Activate'; }
+        });
+
+        loadModels();
+    </script>
+</body>
+</html>
