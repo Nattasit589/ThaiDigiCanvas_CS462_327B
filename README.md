@@ -213,6 +213,25 @@ The prediction feature requires a valid Keras model file (`thai_digit_model.h5`)
 
 If the model file is missing or empty, the `/predict` endpoint returns HTTP 503 with a clear message.
 
+Supported layers and runtime notes:
+- The prediction backend now supports additional Keras layers commonly used in Sequential CNNs: `BatchNormalization`, standalone `Activation` layers (e.g., `Activation('relu')`), and `GlobalAveragePooling2D`.
+- Batch normalization weights (`gamma`, `beta`, `moving_mean`, `moving_variance`) are read from the `.h5` and applied using stored moving statistics (inference mode).
+- If your trained model uses custom layers not listed above, the backend will still raise an `Unsupported model layer` error — convert or remove those layers before exporting.
+
+### POST `/admin/delete`
+
+Delete a previously uploaded model folder (only allowed inside the `models/` directory). If the deleted model was the active model, the server will reset the active model to `thai_digit_model.h5` (root fallback) and unload the in-memory model.
+
+Request example:
+
+```json
+{
+  "model_path": "models/MyModel_1612345678901"
+}
+```
+
+Response: JSON with `status` and a `reset_to_default` flag when the active model was reset.
+
 ## Development Notes
 
 - Canvas draws at 280x280 pixels (MNIST compatible)

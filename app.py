@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import shutil
 import time
 from io import BytesIO
 from werkzeug.utils import secure_filename
@@ -49,6 +50,37 @@ def _load_layer_weights(model_weights_group, layer_name):
     return {
         'kernel': np.array(weight_group['kernel'], dtype=np.float32),
         'bias': np.array(weight_group['bias'], dtype=np.float32),
+    }
+
+
+def _load_batchnorm_weights(model_weights_group, layer_name):
+    """Find and load BatchNormalization weights for a given layer name."""
+    layer_group = model_weights_group[layer_name]
+
+    def _find_bn_group(group):
+        for key in group.keys():
+            candidate = group[key]
+            if isinstance(candidate, h5py.Group):
+                keys = set(candidate.keys())
+                if 'gamma' in keys or 'beta' in keys or 'moving_mean' in keys or 'moving_variance' in keys:
+                    return candidate
+                nested = _find_bn_group(candidate)
+                if nested is not None:
+                    return nested
+        return None
+
+    weight_group = _find_bn_group(layer_group)
+    if weight_group is None:
+        raise ValueError(f'Could not find BatchNormalization weights for layer: {layer_name}')
+
+    def _get(name):
+        return np.array(weight_group[name], dtype=np.float32) if name in weight_group else None
+
+    return {
+        'gamma': _get('gamma'),
+        'beta': _get('beta'),
+        'moving_mean': _get('moving_mean'),
+        'moving_variance': _get('moving_variance'),
     }
 
 
@@ -121,6 +153,9 @@ class NumpySequentialModel:
 
         for layer in self.layers:
             layer_type = layer['type']
+            if layer_type == 'activation':
+                values = _apply_activation(values, layer.get('activation'))
+                continue
             if layer_type == 'conv2d':
                 values = _conv2d_valid(values, layer['kernel'], layer['bias'], layer['strides'])
                 values = _apply_activation(values, layer['activation'])
@@ -128,6 +163,50 @@ class NumpySequentialModel:
                 values = _max_pool2d_valid(values, layer['pool_size'], layer['strides'])
             elif layer_type == 'flatten':
                 values = values.reshape(values.shape[0], -1)
+            elif layer_type == 'batch_normalization':
+                # Apply batch normalization using stored moving statistics
+                gamma = layer.get('gamma')
+                beta = layer.get('beta')
+                mean = layer.get('moving_mean')
+                var = layer.get('moving_variance')
+                eps = float(layer.get('epsilon', 1e-3))
+
+                if mean is None or var is None:
+                    # nothing to do
+                    continue
+
+                if values.ndim == 4:
+                    # broadcast (1,1,1,channels)
+                    mean_r = mean.reshape((1, 1, 1, -1))
+                    var_r = var.reshape((1, 1, 1, -1))
+                    gamma_r = (gamma.reshape((1, 1, 1, -1)) if gamma is not None else 1.0)
+                    beta_r = (beta.reshape((1, 1, 1, -1)) if beta is not None else 0.0)
+                    values = (values - mean_r) / np.sqrt(var_r + eps) * gamma_r + beta_r
+                elif values.ndim == 2:
+                    mean_r = mean.reshape((1, -1))
+                    var_r = var.reshape((1, -1))
+                    gamma_r = (gamma.reshape((1, -1)) if gamma is not None else 1.0)
+                    beta_r = (beta.reshape((1, -1)) if beta is not None else 0.0)
+                    values = (values - mean_r) / np.sqrt(var_r + eps) * gamma_r + beta_r
+                else:
+                    # fallback: apply elementwise if shapes allow
+                    try:
+                        values = (values - mean) / np.sqrt(var + eps) * (gamma if gamma is not None else 1.0) + (beta if beta is not None else 0.0)
+                    except Exception:
+                        pass
+            elif layer_type == 'global_avg_pooling2d':
+                # values shape expected: (batch, height, width, channels)
+                if values.ndim == 4:
+                    values = np.mean(values, axis=(1, 2))
+                elif values.ndim == 3:
+                    # (batch, height, channels) -> mean over spatial dim
+                    values = np.mean(values, axis=1)
+                else:
+                    # leave as-is if unexpected shape
+                    try:
+                        values = np.mean(values, axis=tuple(range(1, values.ndim)))
+                    except Exception:
+                        pass
             elif layer_type == 'dense':
                 values = values @ layer['kernel'] + layer['bias']
                 values = _apply_activation(values, layer['activation'])
@@ -277,6 +356,8 @@ def load_prediction_model(force_reload=False, model_path=None):
                 })
             elif layer_type == 'Flatten':
                 layers.append({'type': 'flatten'})
+            elif layer_type == 'GlobalAveragePooling2D':
+                layers.append({'type': 'global_avg_pooling2d'})
             elif layer_type == 'Dense':
                 weights = _load_layer_weights(model_weights, layer_name)
                 layers.append({
@@ -284,6 +365,24 @@ def load_prediction_model(force_reload=False, model_path=None):
                     'kernel': weights['kernel'],
                     'bias': weights['bias'],
                     'activation': layer_spec['config'].get('activation', 'linear'),
+                })
+            elif layer_type == 'Activation':
+                # standalone Activation layer (e.g., Activation('relu'))
+                layers.append({
+                    'type': 'activation',
+                    'activation': layer_spec['config'].get('activation', 'linear')
+                })
+            elif layer_type == 'BatchNormalization':
+                # load batchnorm params (gamma, beta, moving_mean, moving_variance)
+                bn = _load_batchnorm_weights(model_weights, layer_name)
+                epsilon = layer_spec['config'].get('epsilon', 1e-3)
+                layers.append({
+                    'type': 'batch_normalization',
+                    'gamma': bn.get('gamma'),
+                    'beta': bn.get('beta'),
+                    'moving_mean': bn.get('moving_mean'),
+                    'moving_variance': bn.get('moving_variance'),
+                    'epsilon': float(epsilon),
                 })
             else:
                 raise ValueError(f'Unsupported model layer: {layer_type}')
@@ -430,6 +529,52 @@ def admin_upload():
 
     except Exception as e:
         return jsonify({'error': f'Upload failed: {str(e)}'}), 500
+
+
+@app.route('/admin/delete', methods=['POST'])
+def delete_model():
+    """Delete a model folder and reset active_model if necessary"""
+    global _model, ACTIVE_MODEL
+    data = request.get_json(silent=True)
+    if not data or 'model_path' not in data:
+        return jsonify({'error': 'No model path provided'}), 400
+    
+    model_path = data['model_path']
+    
+    try:
+        # Security check: only allow deletion of models inside MODELS_DIR
+        # (not the root thai_digit_model.h5)
+        model_abs_path = os.path.abspath(model_path)
+        models_abs_dir = os.path.abspath(MODELS_DIR)
+        
+        if not model_abs_path.startswith(models_abs_dir):
+            return jsonify({'error': 'Cannot delete models outside the models directory'}), 403
+        
+        # Check if the model/folder exists
+        if not os.path.exists(model_path):
+            return jsonify({'error': 'Model not found'}), 404
+        
+        # If this is the active model, reset to default
+        persisted_active = read_active_model()
+        if persisted_active and os.path.abspath(persisted_active) == model_abs_path:
+            write_active_model(MODEL_PATH)  # Reset to default
+            _model = None  # Unload the model
+            ACTIVE_MODEL = None
+        
+        # Delete the folder or file
+        if os.path.isdir(model_path):
+            shutil.rmtree(model_path)
+        else:
+            os.remove(model_path)
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Model deleted successfully: {model_path}',
+            'reset_to_default': persisted_active and os.path.abspath(persisted_active) == model_abs_path
+        }), 200
+    
+    except Exception as e:
+        return jsonify({'error': f'Delete failed: {str(e)}'}), 500
 
 
 @app.route('/save', methods=['POST'])
