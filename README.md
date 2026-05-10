@@ -48,7 +48,7 @@ pip install -r requirements.txt
 - werkzeug: WSGI utilities
 - numpy: Numerical computing
 - pillow: Image processing (PIL)
-- keras: Deep learning framework (for model loading and prediction)
+- h5py: Reads the saved Keras `.h5` model weights for prediction
 
 ### 2. Get ngrok Auth Token (Optional but Recommended)
 
@@ -209,6 +209,7 @@ The prediction feature requires a valid Keras model file (`thai_digit_model.h5`)
 2. **Ensure it accepts** 28×28 grayscale input (MNIST format)
 3. **Output shape** should be 5 classes (indices 0-4 mapped to digits 11-15)
 4. The model is lazy-loaded on first prediction request
+5. Prediction runs with a NumPy/H5 backend, so TensorFlow is not required at runtime
 
 If the model file is missing or empty, the `/predict` endpoint returns HTTP 503 with a clear message.
 

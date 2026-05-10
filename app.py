@@ -1,9 +1,11 @@
 import base64
+import json
 import os
 import time
 from io import BytesIO
 from werkzeug.utils import secure_filename
 
+import h5py
 import numpy as np
 from flask import Flask, request, jsonify, render_template
 from PIL import Image
@@ -18,6 +20,121 @@ _model = None
 ALLOWED_EXTENSIONS = {'h5', 'keras'}
 ACTIVE_MODEL = None  # Track which model is currently in use
 ACTIVE_MODEL_FILE = os.path.join(MODELS_DIR, 'active_model.txt')
+
+
+def _decode_h5_attr(value):
+    if isinstance(value, bytes):
+        return value.decode('utf-8')
+    return value
+
+
+def _load_layer_weights(model_weights_group, layer_name):
+    layer_group = model_weights_group[layer_name]
+
+    def _find_weight_group(group):
+        for key in group.keys():
+            candidate = group[key]
+            if isinstance(candidate, h5py.Group):
+                if 'kernel' in candidate and 'bias' in candidate:
+                    return candidate
+                nested = _find_weight_group(candidate)
+                if nested is not None:
+                    return nested
+        return None
+
+    weight_group = _find_weight_group(layer_group)
+    if weight_group is None:
+        raise ValueError(f'Could not find weights for layer: {layer_name}')
+
+    return {
+        'kernel': np.array(weight_group['kernel'], dtype=np.float32),
+        'bias': np.array(weight_group['bias'], dtype=np.float32),
+    }
+
+
+def _apply_activation(values, activation):
+    if activation in (None, '', 'linear'):
+        return values
+    if activation == 'relu':
+        return np.maximum(values, 0.0)
+    if activation == 'softmax':
+        shifted = values - np.max(values, axis=-1, keepdims=True)
+        exp_values = np.exp(shifted)
+        return exp_values / np.sum(exp_values, axis=-1, keepdims=True)
+    raise ValueError(f'Unsupported activation: {activation}')
+
+
+def _conv2d_valid(batch_input, kernel, bias, strides):
+    batch_size, input_height, input_width, input_channels = batch_input.shape
+    kernel_height, kernel_width, kernel_channels, filters = kernel.shape
+    stride_y, stride_x = strides
+
+    if input_channels != kernel_channels:
+        raise ValueError('Input channels do not match convolution kernel channels')
+
+    output_height = (input_height - kernel_height) // stride_y + 1
+    output_width = (input_width - kernel_width) // stride_x + 1
+    output = np.empty((batch_size, output_height, output_width, filters), dtype=np.float32)
+    kernel_flat = kernel.reshape(-1, filters)
+
+    for batch_index in range(batch_size):
+        for row_index in range(output_height):
+            row_start = row_index * stride_y
+            row_end = row_start + kernel_height
+            for col_index in range(output_width):
+                col_start = col_index * stride_x
+                col_end = col_start + kernel_width
+                patch = batch_input[batch_index, row_start:row_end, col_start:col_end, :].reshape(-1)
+                output[batch_index, row_index, col_index, :] = patch @ kernel_flat + bias
+
+    return output
+
+
+def _max_pool2d_valid(batch_input, pool_size, strides):
+    batch_size, input_height, input_width, input_channels = batch_input.shape
+    pool_height, pool_width = pool_size
+    stride_y, stride_x = strides
+
+    output_height = (input_height - pool_height) // stride_y + 1
+    output_width = (input_width - pool_width) // stride_x + 1
+    output = np.empty((batch_size, output_height, output_width, input_channels), dtype=np.float32)
+
+    for batch_index in range(batch_size):
+        for row_index in range(output_height):
+            row_start = row_index * stride_y
+            row_end = row_start + pool_height
+            for col_index in range(output_width):
+                col_start = col_index * stride_x
+                col_end = col_start + pool_width
+                window = batch_input[batch_index, row_start:row_end, col_start:col_end, :]
+                output[batch_index, row_index, col_index, :] = np.max(window, axis=(0, 1))
+
+    return output
+
+
+class NumpySequentialModel:
+    def __init__(self, layers):
+        self.layers = layers
+
+    def predict(self, input_tensor, verbose=0):
+        values = np.asarray(input_tensor, dtype=np.float32)
+
+        for layer in self.layers:
+            layer_type = layer['type']
+            if layer_type == 'conv2d':
+                values = _conv2d_valid(values, layer['kernel'], layer['bias'], layer['strides'])
+                values = _apply_activation(values, layer['activation'])
+            elif layer_type == 'max_pooling2d':
+                values = _max_pool2d_valid(values, layer['pool_size'], layer['strides'])
+            elif layer_type == 'flatten':
+                values = values.reshape(values.shape[0], -1)
+            elif layer_type == 'dense':
+                values = values @ layer['kernel'] + layer['bias']
+                values = _apply_activation(values, layer['activation'])
+            else:
+                raise ValueError(f'Unsupported layer type: {layer_type}')
+
+        return values
 
 
 def get_available_models():
@@ -128,9 +245,50 @@ def load_prediction_model(force_reload=False, model_path=None):
     if os.path.getsize(model_to_load) == 0:
         raise ValueError(f'Model file is empty: {model_to_load}')
 
-    from keras.models import load_model
+    with h5py.File(model_to_load, 'r') as h5_file:
+        model_config = json.loads(_decode_h5_attr(h5_file.attrs['model_config']))
+        if model_config.get('class_name') != 'Sequential':
+            raise ValueError('Only Sequential H5 models are supported by this prediction backend')
 
-    _model = load_model(model_to_load, compile=False)
+        layer_specs = model_config['config']['layers']
+        model_weights = h5_file['model_weights']
+        layers = []
+
+        for layer_spec in layer_specs:
+            layer_type = layer_spec['class_name']
+            layer_name = layer_spec['config'].get('name')
+
+            if layer_type in ('InputLayer', 'Dropout'):
+                continue
+            if layer_type == 'Conv2D':
+                weights = _load_layer_weights(model_weights, layer_name)
+                layers.append({
+                    'type': 'conv2d',
+                    'kernel': weights['kernel'],
+                    'bias': weights['bias'],
+                    'strides': tuple(layer_spec['config'].get('strides', [1, 1])),
+                    'activation': layer_spec['config'].get('activation', 'linear'),
+                })
+            elif layer_type == 'MaxPooling2D':
+                layers.append({
+                    'type': 'max_pooling2d',
+                    'pool_size': tuple(layer_spec['config'].get('pool_size', [2, 2])),
+                    'strides': tuple(layer_spec['config'].get('strides', [2, 2])),
+                })
+            elif layer_type == 'Flatten':
+                layers.append({'type': 'flatten'})
+            elif layer_type == 'Dense':
+                weights = _load_layer_weights(model_weights, layer_name)
+                layers.append({
+                    'type': 'dense',
+                    'kernel': weights['kernel'],
+                    'bias': weights['bias'],
+                    'activation': layer_spec['config'].get('activation', 'linear'),
+                })
+            else:
+                raise ValueError(f'Unsupported model layer: {layer_type}')
+
+    _model = NumpySequentialModel(layers)
     ACTIVE_MODEL = model_to_load
     # persist active model
     write_active_model(model_to_load)

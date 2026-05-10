@@ -4,3 +4,4 @@ pyngrok
 werkzeug
 numpy
 pillow
+h5py
