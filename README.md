@@ -1,7 +1,7 @@
 # Thai Digit Collector & Predictor
 
 A Flask web application with two modes:
-1. **Data Collection** - Collect handwritten digit samples (Thai numerals 11-15) for ML dataset creation
+1. **Data Collection** - Collect handwritten digit samples (Thai numerals ๑๑–๑๕) for ML dataset creation
 2. **AI Prediction** - Real-time handwritten digit recognition using a pre-trained CNN model
 
 Built with Flask, HTML5 Canvas, NumPy, and Keras.
@@ -9,22 +9,27 @@ Built with Flask, HTML5 Canvas, NumPy, and Keras.
 ## Features
 
 - 🎨 **Canvas Drawing**: Draw digits with mouse or touch input
-- 🏷️ **Label Selection**: Choose from digits 11, 12, 13, 14, 15
-- 💾 **Automatic Storage**: Saves images to organized folders by label
+- 🏷️ **Thai Numeral Labels**: UI displays ๑๑, ๑๒, ๑๓, ๑๔, ๑๕ (Thai numerals)
+- 💾 **Automatic Storage**: Saves images to organized folders by label with timestamps
 - 🔮 **AI Prediction**: Real-time digit recognition with confidence scores
+- 📊 **Admin Panel**: Upload and switch between different trained models
 - 🌐 **Public Access**: Uses ngrok for instant public URL tunneling
-- 📱 **Responsive Design**: Works on desktop and mobile devices
+- 📱 **Responsive Design**: Works on desktop and mobile devices with touch support
 
 ## Project Structure
 
 ```
 Project_Collectdat/
-├── app.py                    # Flask backend with data collection & prediction routes
+├── app.py                    # Flask backend with all routes (collection, prediction, admin)
+├── README.md                 # This file
 ├── requirements.txt          # Python dependencies
 ├── thai_digit_model.h5       # Pre-trained Keras model (required for /predict)
+├── models/                   # Uploaded model storage
+│   └── active_model.txt      # Tracks currently active model path
 ├── templates/
 │   ├── index.html           # Data collection interface (Canvas drawing + saving)
-│   └── predict.html         # AI prediction interface (Draw → Predict)
+│   ├── predict.html         # AI prediction interface (Draw → Predict) with Thai numerals
+│   └── admin.html           # Admin panel for model management
 └── dataset/                 # Output folder for collected images
     ├── 11/
     ├── 12/
@@ -89,7 +94,7 @@ Open the ngrok URL (or `http://localhost:5000` locally)
 
 **Page:** `http://localhost:5000/`
 
-1. Select a label (11-15) from the right panel
+1. Select a label (๑๑–๑๕) from the right panel
 2. Draw a digit on the canvas with your mouse/touch
 3. Click **Save** to store the image
 4. Click **Clear** to draw again
@@ -100,9 +105,20 @@ Open the ngrok URL (or `http://localhost:5000` locally)
 
 1. Draw a digit on the canvas
 2. Click **🔮 Predict** button
-3. View the predicted digit class and confidence score
+3. View the predicted digit (displayed in Thai numerals) and confidence score
 
-**Note:** Prediction requires a valid `thai_digit_model.h5` file (not empty). Currently showing placeholder until model is loaded.
+**Note:** Prediction requires a valid `thai_digit_model.h5` file (not empty). The main digit result displays in Thai numerals, while class and confidence remain in Arabic numerals.
+
+### 5. Admin Panel
+
+**Page:** `http://localhost:5000/admin`
+
+1. **Upload Model**: Select a `.h5` or `.keras` file to upload
+2. **View Available Models**: See list of uploaded models with file sizes
+3. **Switch Models**: Click "Switch" to activate a different model for predictions
+4. **Delete Models**: Remove models from the `models/` directory (keeps root model safe)
+
+**Note:** Newly uploaded models are automatically activated and their path is persisted in `active_model.txt`.
 
 ## Image Storage
 
@@ -119,7 +135,89 @@ Serves the data collection interface (`index.html`).
 
 ### GET `/predict-page`
 
-Serves the prediction interface (`predict.html`).
+Serves the prediction interface (`predict.html`) with Thai numeral display.
+
+### GET `/admin`
+
+Serves the admin panel interface (`admin.html`) for model management.
+
+### GET `/admin/models`
+
+Fetch list of available models and current active model.
+
+**Response (Success - 200):**
+```json
+{
+  "status": "success",
+  "models": [
+    {
+      "name": "model_1234567890",
+      "file": "model.h5",
+      "path": "models/model_1234567890/model.h5",
+      "source": "uploaded",
+      "size_mb": 45.32,
+      "location": "models/model_1234567890"
+    }
+  ],
+  "active_model": "models/model_1234567890/model.h5"
+}
+```
+
+### POST `/admin/upload`
+
+Upload a new model file and automatically switch to it.
+
+**Request:** multipart/form-data with `file` field (`.h5` or `.keras`)
+
+**Response (Success - 200):**
+```json
+{
+  "status": "success",
+  "message": "Model uploaded successfully: model_name_1234567890/model.h5",
+  "path": "models/model_name_1234567890/model.h5",
+  "active_model": "models/model_name_1234567890/model.h5"
+}
+```
+
+### POST `/admin/switch`
+
+Switch the active model for predictions.
+
+**Request:**
+```json
+{
+  "model_path": "models/model_name_1234567890/model.h5"
+}
+```
+
+**Response (Success - 200):**
+```json
+{
+  "status": "success",
+  "message": "Switched to model: models/model_name_1234567890/model.h5",
+  "active_model": "models/model_name_1234567890/model.h5"
+}
+```
+
+### POST `/admin/delete`
+
+Delete a model folder (only from `models/` directory, root model is protected).
+
+**Request:**
+```json
+{
+  "model_path": "models/model_name_1234567890"
+}
+```
+
+**Response (Success - 200):**
+```json
+{
+  "status": "success",
+  "message": "Model deleted successfully: models/model_name_1234567890",
+  "reset_to_default": false
+}
+```
 
 ### POST `/save`
 
@@ -168,6 +266,9 @@ Predict a Thai digit from a canvas image.
 }
 ```
 
+Note: The UI displays the `thai_digit` (11-15) in Thai numerals (๑๑–๑๕) while keeping class and confidence score in Arabic numerals
+```
+
 **Response (Model unavailable - 503):**
 ```json
 {
@@ -207,7 +308,7 @@ The prediction feature requires a valid Keras model file (`thai_digit_model.h5`)
 
 1. **Place your trained model** at the project root: `thai_digit_model.h5`
 2. **Ensure it accepts** 28×28 grayscale input (MNIST format)
-3. **Output shape** should be 5 classes (indices 0-4 mapped to digits 11-15)
+3. **Output shape** should be 5 classes (indices 0-4 mapped to digits ๑๑–๑๕)
 4. The model is lazy-loaded on first prediction request
 5. Prediction runs with a NumPy/H5 backend, so TensorFlow is not required at runtime
 
@@ -218,20 +319,6 @@ Supported layers and runtime notes:
 - Batch normalization weights (`gamma`, `beta`, `moving_mean`, `moving_variance`) are read from the `.h5` and applied using stored moving statistics (inference mode).
 - If your trained model uses custom layers not listed above, the backend will still raise an `Unsupported model layer` error — convert or remove those layers before exporting.
 
-### POST `/admin/delete`
-
-Delete a previously uploaded model folder (only allowed inside the `models/` directory). If the deleted model was the active model, the server will reset the active model to `thai_digit_model.h5` (root fallback) and unload the in-memory model.
-
-Request example:
-
-```json
-{
-  "model_path": "models/MyModel_1612345678901"
-}
-```
-
-Response: JSON with `status` and a `reset_to_default` flag when the active model was reset.
-
 ## Development Notes
 
 - Canvas draws at 280x280 pixels (MNIST compatible)
@@ -240,11 +327,46 @@ Response: JSON with `status` and a `reset_to_default` flag when the active model
 - Touch and mouse input both supported
 - Uses Tailwind CSS for responsive UI
 - Model loading is lazy (loaded only when first prediction is made)
+- Thai numeral conversion applied only in UI (backend stays Arabic for compatibility)
+- Model paths persisted in `models/active_model.txt` across restarts
+
+## UI Features
+
+### Thai Numeral Display (v1.1)
+- **Data Collection page**: Shows labels as ๑๑–๑๕ instead of 11–15
+- **Prediction page**: Displays predicted digit in Thai numerals (๑๑–๑๕)
+- **Confidence & Class**: Kept in Arabic numerals for clarity
+- Conversion function: `toThaiDigits()` in JavaScript (`๐๑๒๓๔๕๖๗๘๙` mapping)
+
+## Changelog
+
+### v1.1 (Latest)
+- ✅ Added Thai numeral display throughout UI
+- ✅ Complete Admin panel for model management
+- ✅ Updated README with full documentation
+- ✅ Team member credits added
+
+### v1.0
+- ✅ Initial release with data collection and prediction
+- ✅ Canvas drawing with mouse and touch support
+- ✅ Image storage with timestamps
+- ✅ NumPy-based model inference (no TensorFlow required at runtime)
+
+## Team Members
+
+| Name | Student ID |
+|------|------------|
+| ณัฐสิทธิ์ สงวนธนากร | 1660701390 |
+| ธนธัส คันทรินทร์ | 1670700663 |
+| พัชรพล ชุลีประเสริฐ | 1660707462 |
+| ภาคิน เชาว์โคกสูง | 1660700046 |
+| นายฐานันดร ศรีสวัสดิ์ | 1660707041 |
+| นายภควัต สุขสมโสตร | 1660704279 |
 
 ## License
 
 MIT
 
-## Author
+## Project
 
-Created for Thai digit dataset collection project
+Created for Thai digit dataset collection and recognition project - CS462_327B
