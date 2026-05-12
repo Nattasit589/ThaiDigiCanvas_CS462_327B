@@ -13,7 +13,7 @@
             <h1 class="text-4xl font-bold bg-gradient-to-r from-lime-300 to-lime-400 bg-clip-text text-transparent mb-2">
                 Thai Digit Intelligence
             </h1>
-            <p class="text-slate-400 text-sm">CNN model · realtime handwritten recognition (11–15)</p>
+            <p class="text-slate-400 text-sm">CNN model · realtime handwritten recognition (๑๑–๑๕)</p>
             <div class="mt-4 inline-block bg-slate-700/50 px-4 py-2 rounded-full text-xs font-semibold text-lime-300 border-l-2 border-lime-300">
                 ⚡ AI prediction · dark canvas
             </div>
@@ -44,7 +44,7 @@
 
                 <!-- Status Message -->
                 <div id="hintMsg" class="text-center text-slate-300 text-xs bg-slate-700/30 px-4 py-2 rounded-full inline-block w-full">
-                    ✍️ draw any Thai digit (11-15) → click Predict
+                    ✍️ draw any Thai digit (๑๑-๑๕) → click Predict
                 </div>
             </div>
 
@@ -156,6 +156,10 @@
             }, 1500);
         }
 
+        function toThaiDigits(value) {
+            return String(value).replace(/\d/g, (digit) => '๐๑๒๓๔๕๖๗๘๙'[Number(digit)]);
+        }
+
         document.getElementById('clearBtn').addEventListener('click', clearCanvas);
 
         // ---------- Prediction ----------
@@ -179,10 +183,11 @@
                 const result = await response.json();
                 if (response.ok) {
                     // success
-                    document.getElementById('thaiDigit').innerHTML = result.thai_digit;
+                    const thaiDigitText = toThaiDigits(result.thai_digit);
+                    document.getElementById('thaiDigit').innerHTML = thaiDigitText;
                     document.getElementById('confidenceScore').innerHTML = result.confidence_score + ' <span class="text-sm">%</span>';
-                    document.getElementById('classLabel').innerHTML = `class: ${result.predicted_class} (${result.thai_digit})`;
-                    statusDiv.innerHTML = `✅ predicted: ${result.thai_digit} · conf ${result.confidence_score}%`;
+                    document.getElementById('classLabel').innerHTML = `class: ${result.thai_digit}`;
+                    statusDiv.innerHTML = `✅ predicted: ${thaiDigitText} · conf ${result.confidence_score}%`;
                     statusDiv.className = 'text-center text-xs bg-slate-700/50 px-4 py-2 rounded-full text-lime-300 w-full';
                 } else {
                     statusDiv.innerHTML = '❌ error: ' + (result.error || 'unknown');

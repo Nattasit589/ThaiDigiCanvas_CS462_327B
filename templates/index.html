@@ -11,7 +11,7 @@
         <!-- Header -->
         <div class="mb-8">
             <h1 class="text-3xl font-bold text-emerald-400 mb-2">Thai Digit Collector</h1>
-            <p class="text-slate-300 text-sm">Collect handwritten digits 11–15 for MNIST-style dataset</p>
+            <p class="text-slate-300 text-sm">Collect handwritten digits ๑๑–๑๕ for MNIST-style dataset</p>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -46,23 +46,23 @@
                     <div id="label-select" class="space-y-2">
                         <label class="flex items-center gap-3 p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg cursor-pointer transition">
                             <input type="radio" name="label" value="11" checked class="w-4 h-4">
-                            <span class="text-slate-200 font-medium">11</span>
+                            <span class="text-slate-200 font-medium">๑๑</span>
                         </label>
                         <label class="flex items-center gap-3 p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg cursor-pointer transition">
                             <input type="radio" name="label" value="12" class="w-4 h-4">
-                            <span class="text-slate-200 font-medium">12</span>
+                            <span class="text-slate-200 font-medium">๑๒</span>
                         </label>
                         <label class="flex items-center gap-3 p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg cursor-pointer transition">
                             <input type="radio" name="label" value="13" class="w-4 h-4">
-                            <span class="text-slate-200 font-medium">13</span>
+                            <span class="text-slate-200 font-medium">๑๓</span>
                         </label>
                         <label class="flex items-center gap-3 p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg cursor-pointer transition">
                             <input type="radio" name="label" value="14" class="w-4 h-4">
-                            <span class="text-slate-200 font-medium">14</span>
+                            <span class="text-slate-200 font-medium">๑๔</span>
                         </label>
                         <label class="flex items-center gap-3 p-3 bg-slate-700/50 hover:bg-slate-700 rounded-lg cursor-pointer transition">
                             <input type="radio" name="label" value="15" class="w-4 h-4">
-                            <span class="text-slate-200 font-medium">15</span>
+                            <span class="text-slate-200 font-medium">๑๕</span>
                         </label>
                     </div>
 
@@ -87,6 +87,10 @@
     </div>
 
     <script>
+        function toThaiDigits(value) {
+            return String(value).replace(/\d/g, (digit) => '๐๑๒๓๔๕๖๗๘๙'[Number(digit)]);
+        }
+
         const canvas = document.getElementById('drawCanvas');
         const ctx = canvas.getContext('2d');
 
@@ -170,7 +174,7 @@
                 });
                 if (response.ok) {
                     const result = await response.json();
-                    statusDiv.textContent = `Saved! File: ${result.filename}`;
+                    statusDiv.textContent = `Saved! File: ${toThaiDigits(result.filename)}`;
                     clearCanvas();
                 } else {
                     statusDiv.textContent = 'Save failed.';
